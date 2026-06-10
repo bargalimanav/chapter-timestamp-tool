@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chapter Timestamp Tool</title>
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0F0F1A;
+      --card:    #1A1A2E;
+      --card2:   #22223A;
+      --accent:  #7C6FF7;
+      --accent2: #5A54C4;
+      --green:   #4CAF50;
+      --red:     #EF5350;
+      --text:    #E0E0F0;
+      --muted:   #888899;
+      --border:  #2E2E4A;
+      --input:   #252540;
+      --radius:  10px;
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #4A3F9F, #7C6FF7);
+      padding: 28px 24px 20px;
+      text-align: center;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: .5px; }
+    header p  { color: #DDD; font-size: .9rem; margin-top: 4px; }
+
+    main {
+      max-width: 820px;
+      margin: 32px auto;
+      padding: 0 16px 60px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title span.num {
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
+      width: 24px; height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .8rem;
+    }
+
+    label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 5px; }
+    input[type=text], input[type=url], input[type=password], textarea {
+      width: 100%;
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: .95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border .2s;
+    }
+    input[type=text]:focus, input[type=url]:focus,
+    input[type=password]:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+    textarea { resize: vertical; font-family: 'Courier New', monospace; font-size: .82rem; }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border .2s, background .2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: #1E1E3A;
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone .icon { font-size: 2.2rem; margin-bottom: 8px; }
+    .drop-zone .hint { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+    .drop-zone .filename {
+      margin-top: 10px;
+      color: var(--accent);
+      font-size: .9rem;
+      font-weight: 600;
+    }
+
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 80px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 11px 22px;
+      border: none;
+      border-radius: 7px;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover  { opacity: .88; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent);  color: white; }
+    .btn-green   { background: var(--green);   color: white; }
+    .btn-red     { background: var(--red);     color: white; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+    .btn-full { width: 100%; justify-content: center; margin-top: 10px; }
+
+    .hint-text { font-size: .8rem; color: var(--muted); margin-top: 5px; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: .9rem;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--muted);
+      transition: all .2s;
+    }
+    .tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .preview-wrap {
+      background: #090912;
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: .85rem;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      color: var(--accent);
+      text-align: left;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    td { padding: 7px 12px; color: #C8C8E8; }
+    tr:nth-child(even) td { background: #111128; }
+    .badge {
+      display: inline-block;
+      background: var(--accent2);
+      color: white;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: .75rem;
+      font-weight: 700;
+      margin-left: 8px;
+    }
+
+    #status {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: .9rem;
+      display: none;
+      z-index: 999;
+      max-width: 360px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    #status.success { background: var(--green); color: white; }
+    #status.error   { background: var(--red);   color: white; }
+    #status.info    { background: var(--accent); color: white; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+    .col-hint {
+      background: var(--card2);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: .82rem;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+
+    /* ── Config panel ── */
+    .config-box {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .config-box .config-title {
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .config-note {
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+    .config-note a { color: var(--accent); text-decoration: none; }
+    .config-note a:hover { text-decoration: underline; }
+
+    .toggle-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: .78rem;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .saved-tag {
+      display: inline-block;
+      background: #1a3a1a;
+      color: var(--green);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: .72rem;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .key-row input { flex: 1; }
+    .key-row button { flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⏱ Chapter Timestamp Tool</h1>
+  <p>DaVinci Resolve EDL → Google Sheets / Excel &nbsp;·&nbsp; Runs 100% in your browser</p>
+</header>
+
+<main>
+
+  <!-- ① EDL + Duration -->
+  <div class="card">
+    <div class="card-title"><span class="num">1</span> Upload EDL &amp; Duration</div>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="edlFile" accept=".edl"/>
+      <div class="icon">📂</div>
+      <div><strong>Click to upload</strong> or drag &amp; drop your EDL file</div>
+      <div class="hint">Exported from DaVinci Resolve → File → Export → Timeline Markers as EDL</div>
+      <div class="filename" id="fileName"></div>
+    </div>
+
+    <br/>
+    <label>Total Video Duration</label>
+    <input type="text" id="duration" placeholder="HH:MM:SS  or  MM:SS  or  HH:MM:SS:FF" autocomplete="off"/>
+    <div class="hint-text">Provide total video duration. Outro (26s) is subtracted for the last chapter end time.</div>
+  </div>
+
+  <!-- ② Parse & Preview -->
+  <div class="card">
+    <div class="card-title"><span class="num">2</span> Preview Chapters</div>
+    <button class="btn btn-primary" onclick="parseEDL()" id="parseBtn">🔍 Parse EDL</button>
+    <div id="previewArea" style="margin-top:16px; display:none;">
+      <div style="display:flex; align-items:center; margin-bottom:10px;">
+        <span style="font-weight:700; color:var(--green);">✅ Chapters found</span>
+        <span class="badge" id="chapterCount">0</span>
+      </div>
+      <div class="preview-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Chapter</th><th>Start</th><th>End</th></tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ Column config -->
+  <div class="card">
+    <div class="card-title"><span class="num">3</span> Google Sheet Column</div>
+    <div class="row">
+      <div>
+        <label>Chapter Column</label>
+        <input type="text" id="colCh" value="M" maxlength="2"/>
+      </div>
+      <div>
+        <label>Start Time Column</label>
+        <input type="text" id="colSt" value="N" maxlength="2"/>
+      </div>
+      <div>
+        <label>End Time Column</label>
+        <input type="text" id="colEn" value="O" maxlength="2"/>
+      </div>
+      <div>
+        <label>Start from Row</label>
+        <input type="text" id="startRow" value="2" maxlength="4"/>
+      </div>
+    </div>
+    <div class="col-hint">
+      Used only for Google Sheets export. Default columns are M, N, O. Leave blank to use defaults.
+    </div>
+  </div>
+
+  <!-- ④ Export -->
+  <div class="card">
+    <div class="card-title"><span class="num">4</span> Export</div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('excel', this)">💾 Excel Download</div>
+      <div class="tab"        onclick="switchTab('sheets', this)">📊 Google Sheets</div>
+    </div>
+
+    <!-- Excel tab -->
+    <div class="tab-panel active" id="tab-excel">
+      <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
+        Downloads a formatted <strong>.xlsx</strong> file directly to your computer.
+        No setup needed — runs entirely in the browser.
+      </p>
+      <button class="btn btn-green btn-full" onclick="exportExcel()" id="excelBtn">
+        ⬇️ Download Excel
+      </button>
+    </div>
+
+    <!-- Google Sheets tab -->
+    <div class="tab-panel" id="tab-sheets">
+      <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
+        Writes directly into your Google Sheet using the Sheets API.
+        Requires a one-time API key setup below.
+      </p>
+
+      <!-- ── Google API Config ── -->
+      <div class="config-box" id="apiConfigBox">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div class="config-title">🔑 Google API Configuration</div>
+          <button class="toggle-btn" onclick="toggleApiConfig()">
+            <span id="configToggleLabel">▼ Show Setup</span>
+          </button>
+        </div>
+
+        <div id="apiConfigBody" style="display:none;">
+
+          <!-- API Key -->
+          <div style="margin-bottom:12px;">
+            <label>Google API Key
+              <span id="apiKeySavedTag" class="saved-tag" style="display:none;">✓ Saved</span>
+            </label>
+            <div class="key-row">
+              <input type="password" id="googleApiKey" placeholder="AIza..." autocomplete="off"/>
+              <button class="btn btn-outline" onclick="saveApiKey()" style="padding:10px 14px; font-size:.82rem;">Save</button>
+              <button class="btn btn-red" onclick="clearApiKey()" style="padding:10px 14px; font-size:.82rem;">Clear</button>
+            </div>
+          </div>
+
+          <!-- OAuth Client ID -->
+          <div style="margin-bottom:12px;">
+            <label>OAuth 2.0 Client ID
+              <span id="clientIdSavedTag" class="saved-tag" style="display:none;">✓ Saved</span>
+            </label>
+            <div class="key-row">
+              <input type="password" id="googleClientId" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off"/>
+              <button class="btn btn-outline" onclick="saveClientId()" style="padding:10px 14px; font-size:.82rem;">Save</button>
+              <button class="btn btn-red" onclick="clearClientId()" style="padding:10px 14px; font-size:.82rem;">Clear</button>
+            </div>
+          </div>
+
+          <div class="config-note">
+            <strong>How to get these keys (one-time setup):</strong><br>
+            1. Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> → Create or select a project.<br>
+            2. Enable the <strong>Google Sheets API</strong> from the API Library.<br>
+            3. Go to <strong>APIs &amp; Services → Credentials</strong>.<br>
+            4. Create an <strong>API Key</strong> → paste it above. Restrict it to Sheets API for security.<br>
+            5. Create an <strong>OAuth 2.0 Client ID</strong> (type: Web application) → add <code style="color:var(--accent)">https://your-username.github.io</code> as an Authorized JavaScript Origin → paste the Client ID above.<br>
+            6. Keys are saved in your browser's <strong>localStorage</strong> — they never leave your device.
+          </div>
+        </div>
+      </div>
+      <!-- ── end config ── -->
+
+      <label>Google Sheet URL</label>
+      <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..."/>
+      <div class="hint-text" style="margin-bottom:14px;">
+        Make sure the sheet is shared with your Google account.
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="exportSheets()" id="sheetsBtn">
+        📤 Send to Google Sheets
+      </button>
+    </div>
+  </div>
+
+</main>
+
+<div id="status"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  CONFIG — All Google credentials are stored in localStorage
+//  Keys never leave the browser.
+// ════════════════════════════════════════════════════════════
+const LS_API_KEY   = "gsheets_api_key";
+const LS_CLIENT_ID = "gsheets_client_id";
+
+const OUTRO_DURATION_SECONDS = 26;
+
+// ── State ────────────────────────────────────────────────────
+let parsedChapters = [];
+let currentFile    = null;
+let gisClient      = null;   // Google Identity Services token client
+let accessToken    = null;
+
+// ── Boot: restore saved keys ─────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+  const savedKey = localStorage.getItem(LS_API_KEY);
+  const savedCid = localStorage.getItem(LS_CLIENT_ID);
+  if (savedKey) {
+    document.getElementById("googleApiKey").value = "••••••••••••••••";
+    document.getElementById("apiKeySavedTag").style.display = "inline-block";
+  }
+  if (savedCid) {
+    document.getElementById("googleClientId").value = "••••••••••••••••";
+    document.getElementById("clientIdSavedTag").style.display = "inline-block";
+  }
+});
+
+// ── Key management ───────────────────────────────────────────
+function saveApiKey() {
+  const val = document.getElementById("googleApiKey").value.trim();
+  if (!val || val.startsWith("•")) { showStatus("Paste a real API key first.", "error"); return; }
+  localStorage.setItem(LS_API_KEY, val);
+  document.getElementById("googleApiKey").value = "••••••••••••••••";
+  document.getElementById("apiKeySavedTag").style.display = "inline-block";
+  showStatus("✅ API Key saved to browser storage.", "success");
+}
+function clearApiKey() {
+  localStorage.removeItem(LS_API_KEY);
+  document.getElementById("googleApiKey").value = "";
+  document.getElementById("apiKeySavedTag").style.display = "none";
+  showStatus("API Key cleared.", "info");
+}
+function saveClientId() {
+  const val = document.getElementById("googleClientId").value.trim();
+  if (!val || val.startsWith("•")) { showStatus("Paste a real Client ID first.", "error"); return; }
+  localStorage.setItem(LS_CLIENT_ID, val);
+  document.getElementById("googleClientId").value = "••••••••••••••••";
+  document.getElementById("clientIdSavedTag").style.display = "inline-block";
+  showStatus("✅ Client ID saved to browser storage.", "success");
+}
+function clearClientId() {
+  localStorage.removeItem(LS_CLIENT_ID);
+  document.getElementById("googleClientId").value = "";
+  document.getElementById("clientIdSavedTag").style.display = "none";
+  accessToken = null;
+  showStatus("Client ID cleared.", "info");
+}
+function toggleApiConfig() {
+  const body  = document.getElementById("apiConfigBody");
+  const label = document.getElementById("configToggleLabel");
+  const open  = body.style.display === "none";
+  body.style.display  = open ? "block" : "none";
+  label.textContent   = open ? "▲ Hide Setup" : "▼ Show Setup";
+}
+
+// ════════════════════════════════════════════════════════════
+//  EDL PARSER  (ported from core.py)
+// ════════════════════════════════════════════════════════════
+function parseEDLText(text) {
+  const lines    = text.split(/\r?\n/);
+  const chapters = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^\d{3}\s+\d{3}\s+V\s+C/.test(line)) {
+      const tcMatch = line.match(/(\d{2}:\d{2}:\d{2}:\d{2})/);
+      if (tcMatch && i + 1 < lines.length) {
+        const timecode  = tcMatch[1];
+        const nextLine  = lines[i + 1].trim();
+        const nameMatch = nextLine.match(/\|M:(.+?)(?:\s*\|D:|$)/);
+        if (nameMatch) {
+          chapters.push({ name: nameMatch[1].trim(), tc: timecode });
+        }
+      }
+    }
+  }
+  return chapters;
+}
+
+function tcToSeconds(tc) {
+  const p = tc.split(":");
+  return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseInt(p[2]);
+}
+
+function secondsToHHMMSS(s) {
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+}
+
+function parseDuration(text) {
+  text = text.trim();
+  // drop frames component if HH:MM:SS:FF
+  if ((text.match(/:/g) || []).length === 3) text = text.split(":").slice(0,3).join(":");
+  const p = text.split(":");
+  if (p.length === 3) return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseInt(p[2]);
+  if (p.length === 2) return parseInt(p[0]) * 60 + parseInt(p[1]);
+  return parseInt(p[0]);
+}
+
+function buildChapters(chaptersRaw, videoDurationSeconds) {
+  return chaptersRaw.map((ch, i) => {
+    const startSec = tcToSeconds(ch.tc);
+    let endSec;
+    if (i < chaptersRaw.length - 1) {
+      endSec = tcToSeconds(chaptersRaw[i + 1].tc) - 1;
+    } else {
+      endSec = videoDurationSeconds - OUTRO_DURATION_SECONDS;
+    }
+    return {
+      name:  ch.name,
+      start: secondsToHHMMSS(startSec),
+      end:   secondsToHHMMSS(endSec),
+    };
+  });
+}
+
+// ── File input ───────────────────────────────────────────────
+const edlInput = document.getElementById("edlFile");
+const dropZone = document.getElementById("dropZone");
+
+edlInput.addEventListener("change", () => {
+  currentFile = edlInput.files[0];
+  document.getElementById("fileName").textContent =
+    currentFile ? `✅ ${currentFile.name}` : "";
+});
+
+dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith(".edl")) {
+    currentFile = f;
+    document.getElementById("fileName").textContent = `✅ ${f.name}`;
+  } else {
+    showStatus("Please drop a .edl file.", "error");
+  }
+});
+
+// ── Tabs ─────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("tab-" + name).classList.add("active");
+}
+
+// ── Parse EDL ────────────────────────────────────────────────
+async function parseEDL() {
+  if (!currentFile) { showStatus("Upload an EDL file first.", "error"); return; }
+  const dur = document.getElementById("duration").value.trim();
+  if (!dur)  { showStatus("Enter the video duration.", "error"); return; }
+
+  setLoading("parseBtn", true, "Parsing…");
+  try {
+    const text        = await currentFile.text();
+    const chaptersRaw = parseEDLText(text);
+    if (!chaptersRaw.length) {
+      showStatus("No chapters found in EDL. Make sure markers have names in DaVinci.", "error");
+      return;
+    }
+    const videoDur  = parseDuration(dur);
+    parsedChapters  = buildChapters(chaptersRaw, videoDur);
+    renderPreview(parsedChapters);
+    showStatus(`✅ ${parsedChapters.length} chapters parsed!`, "success");
+  } catch(e) {
+    showStatus("Parse error: " + e.message, "error");
+  } finally {
+    setLoading("parseBtn", false, "🔍 Parse EDL");
+  }
+}
+
+function renderPreview(chapters) {
+  const tbody = document.getElementById("previewBody");
+  tbody.innerHTML = chapters.map((ch, i) =>
+    `<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td><strong>${esc(ch.name)}</strong></td>
+      <td style="color:#7FC6A4">${ch.start}</td>
+      <td style="color:#F0A07A">${ch.end}</td>
+    </tr>`
+  ).join("");
+  document.getElementById("chapterCount").textContent = chapters.length;
+  document.getElementById("previewArea").style.display = "block";
+}
+
+// ════════════════════════════════════════════════════════════
+//  EXCEL EXPORT  (SheetJS — runs 100% in browser)
+// ════════════════════════════════════════════════════════════
+function exportExcel() {
+  if (!validate()) return;
+  setLoading("excelBtn", true, "Generating…");
+
+  try {
+    const wb = XLSX.utils.book_new();
+    const wsData = [
+      ["Chapters", "Start Time", "End Time"],
+      ...parsedChapters.map(ch => [ch.name, ch.start, ch.end])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Column widths
+    ws["!cols"] = [{ wch: 36 }, { wch: 14 }, { wch: 14 }];
+
+    // Header row styling
+    const headerStyle = {
+      font:  { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 11 },
+      fill:  { patternType: "solid", fgColor: { rgb: "2F4F8F" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: {
+        top:    { style: "thin", color: { rgb: "CCCCCC" } },
+        bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+        left:   { style: "thin", color: { rgb: "CCCCCC" } },
+        right:  { style: "thin", color: { rgb: "CCCCCC" } },
+      }
+    };
+    ["A1","B1","C1"].forEach(cell => {
+      if (ws[cell]) ws[cell].s = headerStyle;
+    });
+
+    // Data rows styling (alternating)
+    parsedChapters.forEach((ch, i) => {
+      const row    = i + 2;
+      const altFill = i % 2 === 0
+        ? { patternType: "solid", fgColor: { rgb: "EEF2FF" } }
+        : { patternType: "none" };
+      const dataStyle = {
+        font:      { name: "Arial", sz: 10 },
+        fill:      altFill,
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top:    { style: "thin", color: { rgb: "CCCCCC" } },
+          bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+          left:   { style: "thin", color: { rgb: "CCCCCC" } },
+          right:  { style: "thin", color: { rgb: "CCCCCC" } },
+        }
+      };
+      [`A${row}`,`B${row}`,`C${row}`].forEach(cell => {
+        if (ws[cell]) ws[cell].s = { ...dataStyle,
+          alignment: cell.startsWith("A")
+            ? { horizontal: "left", vertical: "center" }
+            : { horizontal: "center", vertical: "center" }
+        };
+      });
+    });
+
+    XLSX.utils.book_append_sheet(wb, ws, "Chapters");
+    const filename = (currentFile.name.replace(".edl","") || "chapters") + "_chapters.xlsx";
+    XLSX.writeFile(wb, filename);
+    showStatus("✅ Excel downloaded!", "success");
+  } catch(e) {
+    showStatus("Excel error: " + e.message, "error");
+  } finally {
+    setLoading("excelBtn", false, "⬇️ Download Excel");
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS EXPORT  (Sheets REST API + OAuth via GIS)
+// ════════════════════════════════════════════════════════════
+
+// Dynamically load the GIS library only when needed
+function loadGIS() {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.accounts) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.onload  = resolve;
+    s.onerror = () => reject(new Error("Failed to load Google Identity Services."));
+    document.head.appendChild(s);
+  });
+}
+
+async function getAccessToken(clientId) {
+  await loadGIS();
+  return new Promise((resolve, reject) => {
+    gisClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "https://www.googleapis.com/auth/spreadsheets",
+      callback: (tokenResponse) => {
+        if (tokenResponse.error) {
+          reject(new Error(tokenResponse.error));
+        } else {
+          accessToken = tokenResponse.access_token;
+          resolve(accessToken);
+        }
+      },
+    });
+    gisClient.requestAccessToken({ prompt: "consent" });
+  });
+}
+
+function colLetterToIndex(letter) {
+  // A→1, B→2, ...Z→26, AA→27 etc.
+  letter = letter.toUpperCase();
+  let n = 0;
+  for (let i = 0; i < letter.length; i++) {
+    n = n * 26 + (letter.charCodeAt(i) - 64);
+  }
+  return n;
+}
+
+function indexToA1(col, row) {
+  // col is 1-based letter index
+  let letter = "";
+  while (col > 0) {
+    const rem = (col - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    col = Math.floor((col - 1) / 26);
+  }
+  return `${letter}${row}`;
+}
+
+async function pushToSheets(chapters, sheetUrl, token, colCh, colSt, colEn, startRow) {
+  // Extract spreadsheet ID from URL
+  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) throw new Error("Invalid Google Sheet URL. Could not extract spreadsheet ID.");
+  const spreadsheetId = match[1];
+  const apiBase = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values`;
+
+  const chIdx = colLetterToIndex(colCh);
+  const stIdx = colLetterToIndex(colSt);
+  const enIdx = colLetterToIndex(colEn);
+  const headerRow = startRow - 1;
+
+  // Build batch data array
+  const values = [];
+
+  // Helper to add a cell to the values array
+  const addCell = (col, row, value) => {
+    values.push({ range: `Sheet1!${indexToA1(col, row)}`, values: [[value]] });
+  };
+
+  // Headers
+  addCell(chIdx, headerRow, "Chapters");
+  addCell(stIdx, headerRow, "Start Time");
+  addCell(enIdx, headerRow, "End Time");
+
+  // Data rows
+  chapters.forEach((ch, i) => {
+    const row = startRow + i;
+    addCell(chIdx, row, ch.name);
+    addCell(stIdx, row, ch.start);
+    addCell(enIdx, row, ch.end);
+  });
+
+  // Batch update via Sheets API
+  const response = await fetch(
+    `${apiBase}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify({
+        valueInputOption: "USER_ENTERED",
+        data: values,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.json();
+    const msg = err.error?.message || "Sheets API error";
+    if (response.status === 403) {
+      throw new Error("Permission denied. Make sure the sheet is shared with your Google account.");
+    }
+    throw new Error(msg);
+  }
+  return await response.json();
+}
+
+async function exportSheets() {
+  if (!validate()) return;
+
+  const sheetUrl  = document.getElementById("sheetUrl").value.trim();
+  if (!sheetUrl) { showStatus("Enter the Google Sheet URL.", "error"); return; }
+
+  const clientId = localStorage.getItem(LS_CLIENT_ID);
+  if (!clientId) {
+    showStatus("Add your OAuth Client ID in the config panel above first.", "error");
+    document.getElementById("apiConfigBody").style.display = "block";
+    document.getElementById("configToggleLabel").textContent = "▲ Hide Setup";
+    return;
+  }
+
+  const colCh   = (document.getElementById("colCh").value.trim()   || "M").toUpperCase();
+  const colSt   = (document.getElementById("colSt").value.trim()   || "N").toUpperCase();
+  const colEn   = (document.getElementById("colEn").value.trim()   || "O").toUpperCase();
+  const startRow = parseInt(document.getElementById("startRow").value.trim() || "2");
+
+  setLoading("sheetsBtn", true, "Authorizing…");
+
+  try {
+    // Get (or reuse) access token
+    if (!accessToken) {
+      showStatus("A Google sign-in popup will appear…", "info");
+      await getAccessToken(clientId);
+    }
+
+    setLoading("sheetsBtn", true, "Sending…");
+    await pushToSheets(parsedChapters, sheetUrl, accessToken, colCh, colSt, colEn, startRow);
+    showStatus(`✅ ${parsedChapters.length} chapters written to Google Sheets!`, "success");
+  } catch(e) {
+    // If token expired, clear and retry once
+    if (e.message && (e.message.includes("401") || e.message.includes("invalid_token"))) {
+      accessToken = null;
+      showStatus("Session expired. Please click Send again to re-authorize.", "error");
+    } else {
+      showStatus("Error: " + e.message, "error");
+    }
+  } finally {
+    setLoading("sheetsBtn", false, "📤 Send to Google Sheets");
+  }
+}
+
+// ── Shared helpers ────────────────────────────────────────────
+function validate() {
+  if (!parsedChapters.length) {
+    showStatus("Parse the EDL first (Step 2).", "error"); return false;
+  }
+  return true;
+}
+
+function setLoading(id, on, label) {
+  const btn = document.getElementById(id);
+  btn.disabled = on;
+  btn.innerHTML = on ? `<span class="spinner"></span> ${label}` : label;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
+let statusTimer;
+function showStatus(msg, type="info") {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className   = type;
+  el.style.display = "block";
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => el.style.display = "none", 5000);
+}
+</script>
+
+</body>
+</html>
