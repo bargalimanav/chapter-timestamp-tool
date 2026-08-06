@@ -59,12 +59,6 @@
 
     .hint-text { font-size: .8rem; color: var(--muted); margin-top: 5px; }
 
-    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-    .tab { flex: 1; padding: 10px; text-align: center; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: .9rem; border: 1px solid var(--border); background: var(--card2); color: var(--muted); transition: all .2s; }
-    .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
     .preview-wrap { background: #090912; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: .85rem; }
     table { width: 100%; border-collapse: collapse; }
     th { color: var(--accent); text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; }
@@ -126,44 +120,15 @@
     </div>
   </div>
 
-  <!-- ③ Column config -->
+  <!-- ③ Export -->
   <div class="card">
-    <div class="card-title"><span class="num">3</span> Google Sheet Column</div>
+    <div class="card-title"><span class="num">3</span> Export</div>
+    <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
+      Copy the chapters straight to your clipboard and paste them into Google Sheets (or Excel), or download a ready-made .xlsx file.
+    </p>
     <div class="row">
-      <div><label>Chapter Column</label><input type="text" id="colCh" value="M" maxlength="2"/></div>
-      <div><label>Start Time Column</label><input type="text" id="colSt" value="N" maxlength="2"/></div>
-      <div><label>End Time Column</label><input type="text" id="colEn" value="O" maxlength="2"/></div>
-      <div><label>Start from Row</label><input type="text" id="startRow" value="2" maxlength="4"/></div>
-    </div>
-    <div class="col-hint">Used only for Google Sheets export. Default columns are M, N, O.</div>
-  </div>
-
-  <!-- ④ Export -->
-  <div class="card">
-    <div class="card-title"><span class="num">4</span> Export</div>
-
-    <div class="tabs">
-      <div class="tab active" onclick="switchTab('excel', this)">💾 Excel Download</div>
-      <div class="tab"        onclick="switchTab('sheets', this)">📊 Google Sheets</div>
-    </div>
-
-    <!-- Excel tab -->
-    <div class="tab-panel active" id="tab-excel">
-      <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
-        Downloads a formatted <strong>.xlsx</strong> file directly to your computer. No setup needed.
-      </p>
-      <button class="btn btn-green btn-full" onclick="exportExcel()" id="excelBtn">⬇️ Download Excel</button>
-    </div>
-
-    <!-- Google Sheets tab -->
-    <div class="tab-panel" id="tab-sheets">
-      <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
-        Writes directly into your Google Sheet. Sign in with your Google account when prompted.
-      </p>
-      <label>Google Sheet URL</label>
-      <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..."/>
-      <div class="hint-text" style="margin-bottom:14px;">Make sure you have edit access to the sheet.</div>
-      <button class="btn btn-primary btn-full" onclick="exportSheets()" id="sheetsBtn">📤 Send to Google Sheets</button>
+      <button class="btn btn-primary" onclick="copyForSheets()" id="copyBtn">📋 Copy for Google Sheets</button>
+      <button class="btn btn-green" onclick="exportExcel()" id="excelBtn">⬇️ Download Excel</button>
     </div>
   </div>
 
@@ -172,22 +137,21 @@
 <div id="status"></div>
 
 <script>
-// ════════════════════════════════════════════════════════════
-//  ⚙️  CONFIG — PASTE YOUR OAUTH CLIENT ID HERE (one-time)
-//  Get it from: Google Cloud Console → APIs & Services →
-//  Credentials → OAuth 2.0 Client IDs
-//  Add your GitHub Pages URL as an Authorized JavaScript Origin.
-// ════════════════════════════════════════════════════════════
-const GOOGLE_CLIENT_ID = "389517746342-2ro1f8cp25f2t67ggdp4gnj121ipn17a.apps.googleusercontent.com";
-// ════════════════════════════════════════════════════════════
-
 const OUTRO_DURATION_SECONDS = 26;
+
+// Real playback frame rate of your timeline (e.g. 29.97, 23.976, 25, 30, 24).
+// This must match your DaVinci Resolve "Timeline frame rate" setting.
+// NOTE: Non-Drop-Frame timecode at fractional rates (29.97, 23.976) still
+// COUNTS as if it were 30 / 24 fps, but PLAYS BACK slightly slower.
+// So timecode must be converted to real seconds using both the nominal
+// counting rate AND the true playback rate, or timestamps drift the
+// further into the video you go.
+const TIMELINE_FPS = 29.97;
+const NOMINAL_COUNT_FPS = 30; // 30 for 29.97fps timelines, 24 for 23.976fps timelines
 
 // ── Runtime state ────────────────────────────────────────────
 let parsedChapters = [];
 let currentFile    = null;
-let gisClient      = null;
-let accessToken    = null;
 
 // ════════════════════════════════════════════════════════════
 //  EDL PARSER  (ported from core.py)
@@ -210,8 +174,12 @@ function parseEDLText(text) {
 }
 
 function tcToSeconds(tc) {
-  const p = tc.split(":");
-  return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseInt(p[2]);
+  const p = tc.split(":").map(Number);
+  const hh = p[0] || 0, mm = p[1] || 0, ss = p[2] || 0, ff = p[3] || 0;
+  // Total frames using the NOMINAL counting rate (how Resolve labels the TC)
+  const totalFrames = (hh * 3600 + mm * 60 + ss) * NOMINAL_COUNT_FPS + ff;
+  // Convert to real elapsed seconds using the TRUE playback frame rate
+  return totalFrames / TIMELINE_FPS;
 }
 
 function secondsToHHMMSS(s) {
@@ -221,11 +189,16 @@ function secondsToHHMMSS(s) {
 
 function parseDuration(text) {
   text = text.trim();
-  if ((text.match(/:/g)||[]).length === 3) text = text.split(":").slice(0,3).join(":");
-  const p = text.split(":");
-  if (p.length === 3) return parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]);
-  if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]);
-  return parseInt(p[0]);
+  const parts = text.split(":").map(Number);
+  if (parts.length === 4) {
+    // HH:MM:SS:FF -> use the same frame-accurate conversion as tcToSeconds
+    const [hh, mm, ss, ff] = parts;
+    const totalFrames = (hh * 3600 + mm * 60 + ss) * NOMINAL_COUNT_FPS + ff;
+    return totalFrames / TIMELINE_FPS;
+  }
+  if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+  if (parts.length === 2) return parts[0]*60 + parts[1];
+  return parts[0];
 }
 
 function buildChapters(chaptersRaw, videoDurationSeconds) {
@@ -254,14 +227,6 @@ dropZone.addEventListener("drop", e => {
   if (f && f.name.endsWith(".edl")) { currentFile = f; document.getElementById("fileName").textContent = `✅ ${f.name}`; }
   else showStatus("Please drop a .edl file.", "error");
 });
-
-// ── Tabs ─────────────────────────────────────────────────────
-function switchTab(name, el) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-  el.classList.add("active");
-  document.getElementById("tab-" + name).classList.add("active");
-}
 
 // ── Parse EDL ────────────────────────────────────────────────
 async function parseEDL() {
@@ -327,108 +292,22 @@ function exportExcel() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS EXPORT  (Sheets API v4 + OAuth via GIS)
+//  COPY FOR GOOGLE SHEETS  (clipboard, tab-separated — paste directly)
 // ════════════════════════════════════════════════════════════
-function loadGIS() {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.accounts) { resolve(); return; }
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.onload  = resolve;
-    s.onerror = () => reject(new Error("Failed to load Google Identity Services."));
-    document.head.appendChild(s);
-  });
-}
-
-async function getAccessToken() {
-  await loadGIS();
-  return new Promise((resolve, reject) => {
-    gisClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/spreadsheets",
-      callback: (resp) => {
-        if (resp.error) reject(new Error(resp.error));
-        else { accessToken = resp.access_token; resolve(accessToken); }
-      },
-    });
-    gisClient.requestAccessToken({ prompt: "consent" });
-  });
-}
-
-function colLetterToIndex(l) {
-  l = l.toUpperCase(); let n = 0;
-  for (let i = 0; i < l.length; i++) n = n * 26 + (l.charCodeAt(i) - 64);
-  return n;
-}
-function indexToA1(col, row) {
-  let letter = "";
-  while (col > 0) { const rem = (col-1)%26; letter = String.fromCharCode(65+rem)+letter; col = Math.floor((col-1)/26); }
-  return `${letter}${row}`;
-}
-
-async function pushToSheets(chapters, sheetUrl, token, colCh, colSt, colEn, startRow) {
-  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (!match) throw new Error("Invalid Google Sheet URL.");
-  const id  = match[1];
-  const hRow = startRow - 1;
-  const chI = colLetterToIndex(colCh), stI = colLetterToIndex(colSt), enI = colLetterToIndex(colEn);
-
-  const data = [];
-  const cell = (col, row, val) => data.push({ range: `Sheet1!${indexToA1(col,row)}`, values: [[val]] });
-
-  cell(chI, hRow, "Chapters"); cell(stI, hRow, "Start Time"); cell(enI, hRow, "End Time");
-  chapters.forEach((ch, i) => {
-    const r = startRow + i;
-    cell(chI, r, ch.name); cell(stI, r, ch.start); cell(enI, r, ch.end);
-  });
-
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchUpdate`,
-    { method: "POST", headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ valueInputOption: "USER_ENTERED", data }) }
-  );
-  if (!res.ok) {
-    const err = await res.json();
-    if (res.status === 403) throw new Error("Permission denied. Make sure you have edit access to this sheet.");
-    throw new Error(err.error?.message || "Sheets API error");
-  }
-  return res.json();
-}
-
-async function exportSheets() {
+async function copyForSheets() {
   if (!validate()) return;
-
-  // Guard: remind developer if Client ID is not set
-  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith("PASTE_")) {
-    showStatus("Developer: paste your OAuth Client ID at the top of the script.", "error"); return;
-  }
-
-  const sheetUrl = document.getElementById("sheetUrl").value.trim();
-  if (!sheetUrl) { showStatus("Enter the Google Sheet URL.", "error"); return; }
-
-  const colCh    = (document.getElementById("colCh").value.trim()    || "M").toUpperCase();
-  const colSt    = (document.getElementById("colSt").value.trim()    || "N").toUpperCase();
-  const colEn    = (document.getElementById("colEn").value.trim()    || "O").toUpperCase();
-  const startRow = parseInt(document.getElementById("startRow").value.trim() || "2");
-
-  setLoading("sheetsBtn", true, "Authorizing…");
+  setLoading("copyBtn", true, "Copying…");
   try {
-    if (!accessToken) {
-      showStatus("A Google sign-in popup will appear…", "info");
-      await getAccessToken();
-    }
-    setLoading("sheetsBtn", true, "Sending…");
-    await pushToSheets(parsedChapters, sheetUrl, accessToken, colCh, colSt, colEn, startRow);
-    showStatus(`✅ ${parsedChapters.length} chapters written to Google Sheets!`, "success");
+    const rows = [["Chapters", "Start Time", "End Time"],
+      ...parsedChapters.map(ch => [ch.name, ch.start, ch.end])];
+    // Tab-separated values paste directly into Sheets/Excel as separate columns
+    const tsv = rows.map(r => r.join("\t")).join("\n");
+    await navigator.clipboard.writeText(tsv);
+    showStatus(`✅ ${parsedChapters.length} chapters copied! Paste directly into Google Sheets.`, "success");
   } catch(e) {
-    if (e.message.includes("401") || e.message.includes("invalid_token")) {
-      accessToken = null;
-      showStatus("Session expired — click Send again to re-authorize.", "error");
-    } else {
-      showStatus("Error: " + e.message, "error");
-    }
+    showStatus("Copy failed: " + e.message, "error");
   } finally {
-    setLoading("sheetsBtn", false, "📤 Send to Google Sheets");
+    setLoading("copyBtn", false, "📋 Copy for Google Sheets");
   }
 }
 
