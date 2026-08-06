@@ -13,7 +13,6 @@
       --card:    #1A1A2E;
       --card2:   #22223A;
       --accent:  #7C6FF7;
-      
       --accent2: #5A54C4;
       --green:   #4CAF50;
       --red:     #EF5350;
@@ -39,6 +38,9 @@
     label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 5px; }
     input[type=text], input[type=url] { width: 100%; background: var(--input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: .95rem; padding: 10px 14px; outline: none; transition: border .2s; }
     input[type=text]:focus, input[type=url]:focus { border-color: var(--accent); }
+
+    select { width: 100%; background: var(--input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: .95rem; padding: 10px 14px; outline: none; transition: border .2s; cursor: pointer; }
+    select:focus { border-color: var(--accent); }
 
     .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: border .2s, background .2s; position: relative; }
     .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: #1E1E3A; }
@@ -101,13 +103,35 @@
     <label>Total Video Duration</label>
     <input type="text" id="duration" placeholder="HH:MM:SS  or  MM:SS  or  HH:MM:SS:FF" autocomplete="off"/>
     <div class="hint-text">Provide total video duration. Outro (26s) is subtracted for the last chapter end time.</div>
+    <br/>
+    <label>Timeline Frame Rate</label>
+    <select id="fps">
+      <option value="23.976|24">23.976 fps (NDF)</option>
+      <option value="24|24">24 fps</option>
+      <option value="25|25">25 fps</option>
+      <option value="29.97|30" selected>29.97 fps (NDF)</option>
+      <option value="30|30">30 fps</option>
+      <option value="50|50">50 fps</option>
+      <option value="59.94|60">59.94 fps (NDF)</option>
+      <option value="60|60">60 fps</option>
+    </select>
+    <div class="hint-text">Must match your DaVinci Resolve Timeline Settings → Frame rate. Fractional rates (23.976 / 29.97 / 59.94) are Non-Drop-Frame — timecode counts as the next whole number but plays back slightly slower.</div>
   </div>
 
-  <!-- ② Parse & Preview -->
+  <!-- ② Parse -->
   <div class="card">
-    <div class="card-title"><span class="num">2</span> Preview Chapters</div>
+    <div class="card-title"><span class="num">2</span> Parse EDL</div>
     <button class="btn btn-primary" onclick="parseEDL()" id="parseBtn">🔍 Parse EDL</button>
-    <div id="previewArea" style="margin-top:16px; display:none;">
+  </div>
+
+  <!-- ③ Export & Preview -->
+  <div class="card">
+    <div class="card-title"><span class="num">3</span> Export</div>
+    <div class="row">
+      <button class="btn btn-primary" onclick="copyForSheets()" id="copyBtn">📋 Copy for Google Sheets</button>
+      <button class="btn btn-green" onclick="exportExcel()" id="excelBtn">⬇️ Download Excel</button>
+    </div>
+    <div id="previewArea" style="margin-top:20px; display:none;">
       <div style="display:flex; align-items:center; margin-bottom:10px;">
         <span style="font-weight:700; color:var(--green);">✅ Chapters found</span>
         <span class="badge" id="chapterCount">0</span>
@@ -118,18 +142,6 @@
           <tbody id="previewBody"></tbody>
         </table>
       </div>
-    </div>
-  </div>
-
-  <!-- ③ Export -->
-  <div class="card">
-    <div class="card-title"><span class="num">3</span> Export</div>
-    <p style="color:var(--muted); font-size:.88rem; margin-bottom:14px;">
-      Copy the chapters straight to your clipboard and paste them into Google Sheets (or Excel), or download a ready-made .xlsx file.
-    </p>
-    <div class="row">
-      <button class="btn btn-primary" onclick="copyForSheets()" id="copyBtn">📋 Copy for Google Sheets</button>
-      <button class="btn btn-green" onclick="exportExcel()" id="excelBtn">⬇️ Download Excel</button>
     </div>
   </div>
 
@@ -147,8 +159,12 @@ const OUTRO_DURATION_SECONDS = 26;
 // So timecode must be converted to real seconds using both the nominal
 // counting rate AND the true playback rate, or timestamps drift the
 // further into the video you go.
-const TIMELINE_FPS = 29.97;
-const NOMINAL_COUNT_FPS = 30; // 30 for 29.97fps timelines, 24 for 23.976fps timelines
+// Read live from the "Timeline Frame Rate" dropdown (value = "playbackFps|nominalCountFps").
+function getFps() {
+  const raw = document.getElementById("fps").value; // e.g. "29.97|30"
+  const [playback, nominal] = raw.split("|").map(Number);
+  return { TIMELINE_FPS: playback, NOMINAL_COUNT_FPS: nominal };
+}
 
 // ── Runtime state ────────────────────────────────────────────
 let parsedChapters = [];
@@ -177,6 +193,7 @@ function parseEDLText(text) {
 function tcToSeconds(tc) {
   const p = tc.split(":").map(Number);
   const hh = p[0] || 0, mm = p[1] || 0, ss = p[2] || 0, ff = p[3] || 0;
+  const { TIMELINE_FPS, NOMINAL_COUNT_FPS } = getFps();
   // Total frames using the NOMINAL counting rate (how Resolve labels the TC)
   const totalFrames = (hh * 3600 + mm * 60 + ss) * NOMINAL_COUNT_FPS + ff;
   // Convert to real elapsed seconds using the TRUE playback frame rate
@@ -194,6 +211,7 @@ function parseDuration(text) {
   if (parts.length === 4) {
     // HH:MM:SS:FF -> use the same frame-accurate conversion as tcToSeconds
     const [hh, mm, ss, ff] = parts;
+    const { TIMELINE_FPS, NOMINAL_COUNT_FPS } = getFps();
     const totalFrames = (hh * 3600 + mm * 60 + ss) * NOMINAL_COUNT_FPS + ff;
     return totalFrames / TIMELINE_FPS;
   }
